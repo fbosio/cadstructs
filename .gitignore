@@ -1,0 +1,11 @@
+*._ls
+*.bak
+*.db
+*.err
+*.lnk
+*.cdc
+*.dwl
+*.dwg
+!cadstructs/bloques.dwg
+acaddoc.lsp
+hello.lsp
