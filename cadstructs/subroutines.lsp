@@ -205,7 +205,12 @@
       ;; Cargar los bloques del documento en una lista
       (VLAX-FOR	block (VLA-GET-BLOCKS document)
 	(IF
-	  (= (VLA-GET-ISDYNAMICBLOCK block) :VLAX-TRUE)
+	  (= (VL-CATCH-ALL-APPLY	; Workaround: model and paper space don't have
+	       'VLA-GET-ISDYNAMICBLOCK	; this property on AutoCAD 2006
+	       (LIST block)
+	     )
+	     :VLAX-TRUE
+	  )
 	   (PROGN
 	     (SETQ blocks (APPEND blocks (LIST block)))
 

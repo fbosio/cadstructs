@@ -5,6 +5,10 @@ AutoCAD add-ons to draw building structures.
 Currently, prompt messages, command names and comments in the code are
 available in Spanish only.
 
+## Compatibility
+
+The scripts work in AutoCAD 2006 (and I suppose they do in newer versions too).
+
 ## Installation
 Installation depends on each one's way of organizing files.
 
