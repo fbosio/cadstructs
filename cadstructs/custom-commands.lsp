@@ -65,7 +65,7 @@
       )
 
       ;; Intentar carga de bloques dinámicos personalizados
-      (IF (cadstructs:load-and-check-custom-blocks)
+      (IF (cadstructs:load-custom-blocks-p)
 	;; Si se logra, llamar al comando en forma recursiva para comenzar de nuevo
 	(C:LOSA)
       )
@@ -78,40 +78,14 @@
 
 
 ;;; Intercambiar columnas y apeos
-(DEFUN C:COLAP (/ selectionSet object name)
-  (SETQ cmdsave (GETVAR "cmdecho"))
-  (SETVAR "cmdecho" 0)
+(DEFUN C:COLAP ()
+  (cadstructs:exchange-structures "Columna" "Apeo")
+)
 
-  ;; Tratar grupo de comandos como uno solo para deshacer más fácilmente
-  (COMMAND "._undo" "begin")
 
-  ;; Pedir al usuario que seleccione objetos para procesarlos
-  (VLA-SELECTONSCREEN
-    (SETQ selectionSet (cadstructs:add-safe-selection-set))
-  )
-  (VLAX-FOR object selectionSet
-    (SETQ name (VLA-GET-OBJECTNAME object))
-    (COND
-      ((AND (= name "AcDbBlockReference")
-	    (= (VLA-GET-ISDYNAMICBLOCK object) :VLAX-TRUE)
-       )
-       (cadstructs:exchange-structure-blocks object)
-      )
-      ((= name "AcDbText")
-       (cadstructs:exchange-structure-names object)
-      )
-    )
-  )
-  (VLA-DELETE selectionSet)
-
-  ;; Declarar fin del grupo de comandos
-  (COMMAND "._undo" "end")
-
-  (SETVAR "cmdecho" cmdsave)
-  (PRINC
-    "\nListo.\nSe recomienda regenerar el modelo si hay problemas visuales con el sombreado."
-  )
-  (PRINC)
+;;; Intercambiar columnas y bases
+(DEFUN C:COLBAS ()
+  (cadstructs:exchange-structures "Columna" "Base")
 )
 
 

@@ -35,25 +35,6 @@
 )
 
 
-;;; Pedir número al usuario y devolverlo para iniciar conteo
-(DEFUN cadstructs:get-initial-count (/ default number)
-  (SETQ default 1)
-  (INITGET 4)				; Sólo enteros positivos
-  (SETQ
-    number (GETINT
-	     (STRCAT "\nEspecificar el número inicial <"
-		     (ITOA default)	; Opción predeterminada entre <>
-		     ">: "
-	     )
-	   )
-  )
-  (IF (NOT number)
-    (SETQ number default)
-  )
-  number
-)
-
-
 ;;; Pedir orientación al usuario y devolver la rotación en grados
 (DEFUN cadstructs:get-orientation (prefix / horizontal orientation)
   (SETQ horizontal "H")
@@ -71,6 +52,25 @@
     0
     90
   )
+)
+
+
+;;; Pedir número al usuario y devolverlo para iniciar conteo
+(DEFUN cadstructs:get-initial-count (/ default number)
+  (SETQ default 1)
+  (INITGET 4)				; Sólo enteros positivos
+  (SETQ
+    number (GETINT
+	     (STRCAT "\nEspecificar el número inicial <"
+		     (ITOA default)	; Opción predeterminada entre <>
+		     ">: "
+	     )
+	   )
+  )
+  (IF (NOT number)
+    (SETQ number default)
+  )
+  number
 )
 
 
@@ -92,7 +92,6 @@
 
 ;;; Establecer estilo y altura de texto
 (DEFUN cadstructs:text-style (name / height)
-  ;;(SETQ name "NOMBRES")
   (SETQ height (CDR (ASSOC 40 (TBLSEARCH "STYLE" name))))
 
   (IF (OR (NOT height) (= height 0.0))
@@ -177,23 +176,24 @@
 
 
 ;;; Cargar los bloques dinámicos personalizados y devolver T si hubo éxito, nil caso contrario.
-(DEFUN cadstructs:load-and-check-custom-blocks (/ suffix path support-path)
+(DEFUN cadstructs:load-custom-blocks-p (/ suffix path support-path)
   (SETQ suffix "\\cadstructs\\bloques.dwg")
   ;; Buscar bloques en archivo local
   (SETQ path (STRCAT (VLA-GET-PATH (active-document)) suffix))
-  (IF (cadstructs:load-blocks-from-file-path path)
+  (IF (cadstructs:load-blocks-from-file-path-p path)
     T
     (PROGN
       ;; Buscar bloques en el directorio Support
       (SETQ support-path (VLA-GET-SUPPORTPATH (VLA-GET-FILES (VLA-GET-PREFERENCES (acad-object)))))
       (SETQ path (STRCAT (cadstructs:get-first-word-before-char support-path ";") suffix))
-      (cadstructs:load-blocks-from-file-path path)
+      (cadstructs:load-blocks-from-file-path-p path)
     )
   )
 )
 
 
-(DEFUN cadstructs:load-blocks-from-file-path
+;;; Buscar archivo de bloques en la ruta dada y devolver T si pudo cargarse con éxito.
+(DEFUN cadstructs:load-blocks-from-file-path-p
        (path / document block blocks recipient-block repeated blocks-array)
   (PRINC "\nBuscando el archivo\n ")
   (PRINC path)
@@ -253,6 +253,41 @@
 )
 
 
+;;; Seleccionar e intercambiar bloques y nombres de estructuras
+(DEFUN cadstructs:exchange-structures (struct1 struct2 / cmdsave selection-set object name)
+  (SETQ cmdsave (GETVAR "cmdecho"))
+  (SETVAR "cmdecho" 0)
+
+  ;; Tratar grupo de comandos como uno solo para deshacer más fácilmente
+  (COMMAND "._undo" "begin")
+
+  ;; Pedir al usuario que seleccione objetos para procesarlos
+  (VLA-SELECTONSCREEN
+    (SETQ selection-set (cadstructs:add-safe-selection-set))
+  )
+  (VLAX-FOR object selection-set
+    (SETQ name (VLA-GET-OBJECTNAME object))
+    (COND
+      ((AND (= name "AcDbBlockReference")
+	    (= (VLA-GET-ISDYNAMICBLOCK object) :VLAX-TRUE)
+       )
+       (cadstructs:exchange-structure-blocks object struct1 struct2)
+      )
+      ((= name "AcDbText")
+       (cadstructs:exchange-structure-names object struct1 struct2)
+      )
+    )
+  )
+  (VLA-DELETE selection-set)
+
+  ;; Declarar fin del grupo de comandos
+  (COMMAND "._undo" "end")
+
+  (SETVAR "cmdecho" cmdsave)
+  (PRINC)
+)
+
+
 ;;; Añadir conjunto de selección en forma segura y devolverlo
 (DEFUN cadstructs:add-safe-selection-set (/ sets id)
   (SETQ sets (VLA-GET-SELECTIONSETS (active-document)))
@@ -269,21 +304,27 @@
 )
 
 
-;;; Tomar y cambiar datos de un bloque de Columna o Apeo
-(DEFUN cadstructs:exchange-structure-blocks
-       (block / name new-layer new-block properties i property)
+;;; Tomar y cambiar datos de un bloque por otro
+(DEFUN cadstructs:exchange-structure-blocks (block struct1 struct2 / name prefix pairs new-block)
   (SETQ name (VLA-GET-EFFECTIVENAME block))
-  (SETQ	name (COND
-	       ((= name "Apeo") "Columna")
-	       ((= name "Apeo cilíndrico") "Columna cilíndrica")
-	       ((= name "Columna") "Apeo")
-	       ((= name "Columna cilíndrica") "Apeo cilíndrico")
-	     )
-  )
-  (IF name
+  (IF (SETQ name (COND ((= struct2 "Apeo")
+			(COND ((= name "Columna") "Apeo")
+			      ((= name "Apeo") "Columna")
+			      ((= name "Columna cilíndrica") "Apeo cilíndrico")
+			      ((= name "Apeo cilíndrico") "Columna cilíndrica")
+			)
+		       )
+		       ((= struct2 "Base")
+			(SETQ pairs '(("Ancho" "Ancho de columna") ("Alto" "Alto de columna")))
+			(COND ((= name "Columna") "Base céntrica-esquinera")
+			      ((= name "Base céntrica-esquinera") "Columna")
+			)
+		       )
+		 )
+      )
     (PROGN
-      (SETQ new-layer (STRCAT (cadstructs:get-first-word-before-char name " ") "s"))
-      (cadstructs:make-layer new-layer)	; Crear nueva capa, si es necesario
+      (SETQ prefix (cadstructs:get-first-word-before-char name " "))
+      (cadstructs:make-layer (SUBSTR prefix 1 1)) ; Crear nueva capa, si es necesario
       (SETQ new-block			; Insertar nuevo bloque sobre el anterior
 	     (VLA-INSERTBLOCK
 	       (VLA-OBJECTIDTOOBJECT
@@ -299,8 +340,8 @@
 	     )
       )
       ;; Copiar propiedades del bloque anterior y borrarlo
-      (VLA-PUT-LAYER new-block new-layer)
-      (cadstructs:copy-dynamic-properties block new-block)
+      (VLA-PUT-LAYER new-block (STRCAT prefix "s"))
+      (cadstructs:copy-dynamic-properties block new-block pairs)
       (VLA-DELETE block)
     )
   )
@@ -308,39 +349,63 @@
 
 
 ;;; Obtiene la primer palabra antes de un caracter dado
-(DEFUN cadstructs:get-first-word-before-char (name character / i)
-  (IF (SETQ i (VL-STRING-POSITION (ASCII character) name))
-    (SUBSTR name 1 i)
-    name
+(DEFUN cadstructs:get-first-word-before-char (text character)
+  (CAR (cadstructs:split-in-two-at-first-match text character))
+)
+
+
+
+(DEFUN cadstructs:split-in-two-at-first-match (text character / i)
+  (SETQ i (VL-STRING-POSITION (ASCII character) text))
+  (APPEND (LIST (SUBSTR text 1 i))
+	  (IF i
+	    (LIST (SUBSTR text (1+ i)))
+	  )
   )
 )
 
 
 ;;; Copiar propiedades de un bloque dinámico a otro
-(DEFUN cadstructs:copy-dynamic-properties (from to / i property)
-  (SETQ	from (cadstructs:get-writable-dynamic-properties from)
-	to   (cadstructs:get-writable-dynamic-properties to)
-	i    0
+(DEFUN cadstructs:copy-dynamic-properties
+       (from to allowed-pairs / pair flattened-list allowed-pair key)
+  (FOREACH pair	allowed-pairs
+    (SETQ flattened-list (APPEND flattened-list pair))
   )
-  (REPEAT (LENGTH from)
-    (SETQ pair (NTH i from))
-    (VLA-PUT-VALUE (CDR (ASSOC (CAR pair) to)) (VLA-GET-VALUE (CDR pair)))
-    (SETQ i (1+ i))
+  (SETQ	from (cadstructs:get-writable-dynamic-properties from flattened-list)
+	to   (cadstructs:get-writable-dynamic-properties to flattened-list)
+  )
+  (FOREACH pair	from
+    (SETQ key (CAR pair))
+    (IF	allowed-pairs
+      (FOREACH allowed-pair allowed-pairs
+	(COND ((= key (CAR allowed-pair)) (SETQ key (CADR allowed-pair)))
+	      ((= key (CADR allowed-pair)) (SETQ key (CAR allowed-pair)))
+	)
+      )
+    )
+    (IF	key
+      (VLA-PUT-VALUE (CDR (ASSOC key to)) (VLA-GET-VALUE (CDR pair)))
+    )
   )
 )
 
 
 ;;; Devolver lista de pares (nombre . referencia) con propiedades modificables de bloque dinámico
-(DEFUN cadstructs:get-writable-dynamic-properties (block / property-list i property property-pairs)
-  (SETQ	property-list
+(DEFUN cadstructs:get-writable-dynamic-properties
+       (block allowed-properties / properties i property property-pairs)
+  (SETQ	properties
 	 (VLAX-SAFEARRAY->LIST
 	   (VLAX-VARIANT-VALUE (VLA-GETDYNAMICBLOCKPROPERTIES block))
 	 )
 	i 0
   )
-  (REPEAT (LENGTH property-list)
-    (SETQ property (NTH i property-list))
-    (IF	(= (VLA-GET-SHOW property) :VLAX-TRUE)
+  (REPEAT (LENGTH properties)
+    (SETQ property (NTH i properties))
+    (IF	(AND (= (VLA-GET-SHOW property) :VLAX-TRUE)
+	     (OR (NOT allowed-properties)
+		 (VL-POSITION (VLA-GET-PROPERTYNAME property) allowed-properties)
+	     )
+	)
       (SETQ property-pairs
 	     (APPEND
 	       property-pairs
@@ -357,8 +422,8 @@
 )
 
 
-;;; Tomar y cambiar datos de un texto que refiere a una Columna o a un Apeo
-(DEFUN cadstructs:exchange-structure-names (object / text second-char-code first-char new-data)
+(DEFUN cadstructs:exchange-structure-names
+       (object struct1 struct2 / text second-char-code first-char layer)
   (SETQ text (VLA-GET-TEXTSTRING object))
   (SETQ second-char-code (ASCII (SUBSTR text 2 1)))
 
@@ -367,25 +432,15 @@
     (PROGN
       (SETQ first-char (SUBSTR text 1 1))
       ;; Modificar texto de acuerdo a su primer caracter
-      (SETQ new-data
-	     (COND
-	       ((= first-char "A")
-		(LIST (CONS 'first-char "C") (CONS 'layer "Columnas"))
-	       )
-	       ((= first-char "C")
-		(LIST (CONS 'first-char "A") (CONS 'layer "Apeos"))
-	       )
-	     )
-      )
-      (IF new-data
-	(PROGN
-	  (SETQ	text (STRCAT (CDR (ASSOC 'first-char new-data))
-			     (SUBSTR text 2)
-		     )
+      (IF (SETQ	layer (COND ((= first-char (SUBSTR struct1 1 1)) (STRCAT struct2 "s"))
+			    ((= first-char (SUBSTR struct2 1 1)) (STRCAT struct1 "s"))
+		      )
 	  )
-	  (VLA-PUT-TEXTSTRING object text)
-	  (cadstructs:make-layer (CDR (ASSOC 'first-char new-data)))
-	  (VLA-PUT-LAYER object (CDR (ASSOC 'layer new-data)))
+	(PROGN
+	  (SETQ first-char (SUBSTR layer 1 1))
+	  (VLA-PUT-TEXTSTRING object (STRCAT first-char (SUBSTR text 2)))
+	  (cadstructs:make-layer first-char)
+	  (VLA-PUT-LAYER object layer)
 	)
       )
     )
