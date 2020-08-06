@@ -384,7 +384,13 @@
       )
     )
     (IF	key
-      (VLA-PUT-VALUE (CDR (ASSOC key to)) (VLA-GET-VALUE (CDR pair)))
+      (PROGN
+	(VLA-PUT-VALUE (CDR (ASSOC key to)) (VLA-GET-VALUE (CDR pair)))
+
+	;; Workaround: fix hatch bug
+	(COMMAND "._regen")
+	(COMMAND "._regen")
+      )
     )
   )
 )
