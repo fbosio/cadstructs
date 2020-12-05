@@ -29,7 +29,7 @@ Installation depends on each one's way of organizing files.
   7. `Close` the last two windows and that's it.
 
 ## Project structure
-* `install.sh` adds the AutoLISP files to a local `acaddoc.lsp`;
+* `install.bat` adds the AutoLISP files to a local `acaddoc.lsp`;
 * `cadstructs` contains the script files:
   - `activex.lsp` loads the supporting code that enables the ActiveX functions
     in AutoLISP. ActiveX is needed for working with dynamic blocks, and allows
